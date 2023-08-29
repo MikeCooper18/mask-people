@@ -5,6 +5,7 @@ Meant for use with videos with a static camera in which there is a clear boundar
 """
 import os
 import argparse
+import shutil
 import cv2
 from ultralytics import YOLO
 import numpy as np
@@ -17,7 +18,7 @@ mask_type = None
 fps = None
 frame_limit = None
 show_frame_count = None
-
+visualise = None
 
 def process_video(video_file_path: str, output_parent_direcory: str):
     """
@@ -46,7 +47,7 @@ def process_video(video_file_path: str, output_parent_direcory: str):
     frame_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     print(f"FPS: {fps}, frame size: {frame_size}")
 
-    video_writers = []
+    video_writers = {}
     max_persons = 0
 
     frame_count = 0
@@ -62,11 +63,13 @@ def process_video(video_file_path: str, output_parent_direcory: str):
         if frame_limit is not None and frame_count > frame_limit:
             break
 
-        results = model(frame)[0]
+        # results = model(frame)[0]
+        results = model.track(frame, persist=True)[0]
         print(f"Processing frame {frame_count}")
 
-        # annotated_frame = results.plot()
-        # cv2.imshow('frame', annotated_frame)
+        if visualise:
+            annotated_frame = results.plot()
+            cv2.imshow('Annotated frame', annotated_frame)
 
         # Filter the boxes for just people
         filtered_boxes = [box for box in results.boxes if results.names[int(box.cls)] == "person"]
@@ -79,6 +82,8 @@ def process_video(video_file_path: str, output_parent_direcory: str):
         for index, box in enumerate(sorted_boxes):
             frame_copy = frame.copy()
             label = results.names[int(box.cls)]
+
+            person_id = int(box.id)
 
             box_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 
@@ -94,9 +99,18 @@ def process_video(video_file_path: str, output_parent_direcory: str):
                     left_bound = 0 if index == 0 else int((box.xyxy[0][0] + sorted_boxes[index-1].xyxy[0][2]) / 2)
                     right_bound = frame.shape[1] if index == len(sorted_boxes) - 1 else int((box.xyxy[0][2] + sorted_boxes[index+1].xyxy[0][0]) / 2)
 
+                    # For the split mask method, if the bounding boxes of the people overlap, the averaging will decrease the size of the mask.
+                    # Whilst the program isn't best suited for videos with overlapping people in it, we can try fix this by taking the
+                    # min or max value of box i's bounds with the average of the bounds of box i-1 and box i+1 respectively.
+                    left_bound = min(left_bound, box.xyxy[0][0])
+                    right_bound = max(right_bound, box.xyxy[0][2])
+
+
                     # Draw the rectangle on the box_mask
                     x1, y1 = left_bound, 0
                     x2, y2 = right_bound, frame.shape[0]
+
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
                     cv2.rectangle(box_mask, (x1, y1), (x2, y2), (255, 255, 255), -1)
 
@@ -117,26 +131,25 @@ def process_video(video_file_path: str, output_parent_direcory: str):
 
 
             # If a writer for this person doesn't exist yet, create it
-            # TODO: change logic a bit when tracking is implemented. Based upon track id.
-            if len(video_writers) <= index:
-                # print(f"Creating video writer for person {index}")
-                person_output_path = os.path.join(output_dir, f'person_{index}.mp4')
+            if not person_id in video_writers.keys():
+                # print(f"Creating video writer for person {person_id}")
+                person_output_path = os.path.join(output_dir, f'person_{person_id}.mp4')
                 video_writer = cv2.VideoWriter(filename=person_output_path, fourcc=cv2.VideoWriter_fourcc(*'mp4v'), fps=fps, frameSize=frame_size, isColor=True)
-                video_writers.append(video_writer)
+                video_writers[person_id] = video_writer
             
             if show_frame_count:
                 # Add framecount to the frame
                 cv2.putText(isolated_person_frame, f"Frame: {frame_count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
             # Write the frame to its corresponding video writer
-            video_writers[index].write(isolated_person_frame)
+            video_writers[person_id].write(isolated_person_frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break # exit the while loop if the user presses q.
 
     # Release all video writers
-    for video_writer in video_writers:
-        video_writer.release()
+    for id in video_writers.keys():
+        video_writers[id].release()
 
     cap.release()
     cv2.destroyAllWindows()
@@ -154,6 +167,7 @@ def main():
     parser.add_argument("--blur-size", type=int, default=71, help="The size of the blur kernel to use when blurring the mask (only used when mask_type is 'box'). Larger values will increase the size of the masked area. Increase this if the mask doesn't cover all of the movement/props the person has.")
     parser.add_argument("--frame-limit", type=int, default=-1, help="The number of frames to process. Useful for testing. If not specified, the entire video will be processed.")
     parser.add_argument("--show-frame-count", action="store_true", help="Whether or not to display the frame count on the output video(s).")
+    parser.add_argument("--visualise", action="store_true", help="Whether or not to display the annotated frame. Useful for testing.")
 
     args = parser.parse_args()
 
@@ -166,6 +180,11 @@ def main():
     global show_frame_count
     show_frame_count = args.show_frame_count
 
+    global visualise
+    visualise = args.visualise
+
+    print(f"Mask blur size: {mask_blur_size} pixels")
+    print(f"Mask type: {mask_type}")
     print(f"Show frame count: {show_frame_count}")
 
     if args.frame_limit != -1:
@@ -201,7 +220,6 @@ def main():
     else:
         print('Invalid video file or folder.')
 
-# TODO: Slight issue when people are overlapping. See the output of the Quartet video. Look into using the tracking model instead of the detection model?
-# TODO: When implementing this, if a person being tracked disappears for a frame, use the previous frames mask. (idk how the tracking model handles this, it might already have similar functionality.)
+# TODO: slight issue with the tracking model for the Quartet video it doesnt recognise the second person very well. Look at tweaking parameters.
 if __name__ == "__main__":
     main()
