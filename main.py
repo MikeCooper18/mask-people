@@ -85,7 +85,6 @@ def process_video(video_file_path: str, output_parent_direcory: str):
 
             if label == "person":
                 if mask_type == "split":
-                    # TODO: the bounding boxes sometime jump back to the right edge of the bounding box. Store the previous position and then average it with the current position to smooth out the movement.                    
                     # Calculate the bounds for this box.
                     # The left bound is the midpoint between the this box's left edge and the previous box's right edge.
                     # The right bound is the midpoint between this box's right edge and the next box's left edge.
