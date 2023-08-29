@@ -16,6 +16,7 @@ mask_blur_size = None
 mask_type = None
 fps = None
 frame_limit = None
+show_frame_count = None
 
 
 def process_video(video_file_path: str, output_parent_direcory: str):
@@ -122,8 +123,9 @@ def process_video(video_file_path: str, output_parent_direcory: str):
                 video_writer = cv2.VideoWriter(filename=person_output_path, fourcc=cv2.VideoWriter_fourcc(*'mp4v'), fps=fps, frameSize=frame_size, isColor=True)
                 video_writers.append(video_writer)
             
-            # Add framecount to the frame
-            cv2.putText(isolated_person_frame, f"Frame: {frame_count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+            if show_frame_count:
+                # Add framecount to the frame
+                cv2.putText(isolated_person_frame, f"Frame: {frame_count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
 
             # Write the frame to its corresponding video writer
             video_writers[index].write(isolated_person_frame)
@@ -150,6 +152,7 @@ def main():
     parser.add_argument("--mask-type", type=str, choices=["box", "split"], default="box", help="The type of mask to use. Default is 'box'. 'box' masks using the bounding boxes of each person, 'split' splits the frame vertically between each person.")
     parser.add_argument("--blur-size", type=int, default=71, help="The size of the blur kernel to use when blurring the mask (only used when mask_type is 'box'). Larger values will increase the size of the masked area. Increase this if the mask doesn't cover all of the movement/props the person has.")
     parser.add_argument("--frame-limit", type=int, default=-1, help="The number of frames to process. Useful for testing. If not specified, the entire video will be processed.")
+    parser.add_argument("--show-frame-count", action="store_true", help="Whether or not to display the frame count on the output video(s).")
 
     args = parser.parse_args()
 
@@ -159,8 +162,13 @@ def main():
     global mask_type
     mask_type = args.mask_type
 
+    global show_frame_count
+    show_frame_count = args.show_frame_count
+
+    print(f"Show frame count: {show_frame_count}")
+
     if args.frame_limit != -1:
-        print(f'Processing {args.frame_limit} frames.')
+        print(f'Frame Limit: {args.frame_limit} frames.')
         global frame_limit
         frame_limit = args.frame_limit
 
@@ -183,8 +191,11 @@ def main():
             print('No video files found in the folder.')
             exit()
 
-        for video_file_path in video_file_paths:
+        for count, video_file_path in enumerate(video_file_paths):
+            print(f"\n\nProcessing video {count+1} of {len(video_file_paths)}")
             process_video(video_file_path, args.output)
+        
+        print(f"\n\nFinished processing {len(video_file_paths)} videos.")
 
     else:
         print('Invalid video file or folder.')
