@@ -73,15 +73,17 @@ def process_video(video_file_path: str, output_parent_direcory: str):
         max_persons = max(max_persons, len(sorted_boxes))
         print(f"Sorted boxes: {len(sorted_boxes)}")
 
-        if mask_type == 'split':
-            # TODO: the bounding boxes sometime jump back to the right edge of the bounding box. Store the previous position and then average it with the current position to smooth out the movement.
-            # TODO: Add text to the video so show the framecount to make sure its working correctly.
-            for index, box in enumerate(sorted_boxes):
-                frame_copy = frame.copy()
-                label = results.names[int(box.cls)]
+        # TODO: the bounding boxes sometime jump back to the right edge of the bounding box. Store the previous position and then average it with the current position to smooth out the movement.
+        for index, box in enumerate(sorted_boxes):
+            frame_copy = frame.copy()
+            label = results.names[int(box.cls)]
 
-                if label == "person":
-                    box_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+            box_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+
+            isolated_person_frame = None
+
+            if label == "person":
+                if mask_type == "split":
                     
                     # Calculate the bounds for this box.
                     # The left bound is the midpoint between the this box's left edge and the previous box's right edge.
@@ -90,7 +92,7 @@ def process_video(video_file_path: str, output_parent_direcory: str):
                     # If this is the last box, the right bound is the right edge of the frame.
                     left_bound = 0 if index == 0 else int((box.xyxy[0][0] + sorted_boxes[index-1].xyxy[0][2]) / 2)
                     right_bound = frame.shape[1] if index == len(sorted_boxes) - 1 else int((box.xyxy[0][2] + sorted_boxes[index+1].xyxy[0][0]) / 2)
-                    
+
                     # Draw the rectangle on the box_mask
                     x1, y1 = left_bound, 0
                     x2, y2 = right_bound, frame.shape[0]
@@ -98,25 +100,8 @@ def process_video(video_file_path: str, output_parent_direcory: str):
                     cv2.rectangle(box_mask, (x1, y1), (x2, y2), (255, 255, 255), -1)
 
                     isolated_person_frame = cv2.bitwise_and(frame_copy, frame_copy, mask=box_mask)
-
-                    # If a writer for this person doesn't exist yet, create it
-                    if len(video_writers) <= index:
-                        print(f"Creating video writer for person {index}")
-                        person_output_path = os.path.join(output_dir, f'person_{index}.mp4')
-                        video_writer = cv2.VideoWriter(filename=person_output_path, fourcc=cv2.VideoWriter_fourcc(*'mp4v'), fps=fps, frameSize=frame_size, isColor=True)
-                        video_writers.append(video_writer)
-                    
-                    # Write the frame to its corresponding video writer
-                    video_writers[index].write(isolated_person_frame)
-
-        
-        elif mask_type == 'box':
-            # Get the bounding boxes for only people and convert them to a b/w mask
-            for index, box in enumerate(sorted_boxes):
-                frame_copy = frame.copy()
-                label = results.names[int(box.cls)]
-                if label == "person":
-                    box_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+                
+                elif mask_type == "box":
                     x1, y1, x2, y2 = (int(coord) for coord in box.xyxy[0])
                     cv2.rectangle(box_mask, (x1, y1), (x2, y2), (255, 255, 255), -1)
 
@@ -129,18 +114,25 @@ def process_video(video_file_path: str, output_parent_direcory: str):
                     # At this point, we have a mask which isolates one person in the frame. Apply the mask to the frame copy.
                     isolated_person_frame = cv2.bitwise_and(frame_copy, frame_copy, mask=expanded_mask)
 
-                    # If a writer for this person doesn't exist yet, create it
-                    if len(video_writers) <= index:
-                        print(f"Creating video writer for person {index}")
-                        person_output_path = os.path.join(output_dir, f'person_{index}.mp4')
-                        video_writer = cv2.VideoWriter(filename=person_output_path, fourcc=cv2.VideoWriter_fourcc(*'mp4v'), fps=fps, frameSize=frame_size, isColor=True)
-                        video_writers.append(video_writer)
-                    
-                    # Write the frame to its corresponding video writer
-                    video_writers[index].write(isolated_person_frame)
+
+            # If a writer for this person doesn't exist yet, create it
+            if len(video_writers) <= index:
+                print(f"Creating video writer for person {index}")
+                person_output_path = os.path.join(output_dir, f'person_{index}.mp4')
+                video_writer = cv2.VideoWriter(filename=person_output_path, fourcc=cv2.VideoWriter_fourcc(*'mp4v'), fps=fps, frameSize=frame_size, isColor=True)
+                video_writers.append(video_writer)
+            
+            # Add framecount to the frame
+            cv2.putText(isolated_person_frame, f"Frame: {frame_count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
+
+            # Show the frame
+            cv2.imshow('frame', isolated_person_frame)
+
+            # Write the frame to its corresponding video writer
+            video_writers[index].write(isolated_person_frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            break # exit the while loop if the user presses q.
 
     # Release all video writers
     for video_writer in video_writers:
