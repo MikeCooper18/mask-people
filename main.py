@@ -117,6 +117,7 @@ def process_video(video_file_path: str, output_parent_direcory: str):
 
 
             # If a writer for this person doesn't exist yet, create it
+            # TODO: change logic a bit when tracking is implemented. Based upon track id.
             if len(video_writers) <= index:
                 # print(f"Creating video writer for person {index}")
                 person_output_path = os.path.join(output_dir, f'person_{index}.mp4')
@@ -200,6 +201,7 @@ def main():
     else:
         print('Invalid video file or folder.')
 
-
+# TODO: Slight issue when people are overlapping. See the output of the Quartet video. Look into using the tracking model instead of the detection model?
+# TODO: When implementing this, if a person being tracked disappears for a frame, use the previous frames mask. (idk how the tracking model handles this, it might already have similar functionality.)
 if __name__ == "__main__":
     main()
