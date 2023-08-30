@@ -5,7 +5,6 @@ Meant for use with videos with a static camera in which there is a clear boundar
 """
 import os
 import argparse
-import shutil
 import cv2
 from ultralytics import YOLO
 import numpy as np
