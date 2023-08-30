@@ -19,6 +19,8 @@ fps = None
 frame_limit = None
 show_frame_count = None
 visualise = None
+confidence_threshold = None
+intersection_threshold = None
 
 def process_video(video_file_path: str, output_parent_direcory: str):
     """
@@ -47,6 +49,13 @@ def process_video(video_file_path: str, output_parent_direcory: str):
     frame_size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     print(f"FPS: {fps}, frame size: {frame_size}")
 
+    # Search through the model class names to find the index of the person class
+    person_class = None
+    for key, name in model.names.items():
+        if name == "person":
+            person_class = key
+            break
+
     video_writers = {}
     max_persons = 0
 
@@ -64,7 +73,7 @@ def process_video(video_file_path: str, output_parent_direcory: str):
             break
 
         # results = model(frame)[0]
-        results = model.track(frame, persist=True)[0]
+        results = model.track(frame, persist=True, classes=person_class, conf=confidence_threshold, iou=intersection_threshold)[0]
         print(f"Processing frame {frame_count}")
 
         if visualise:
@@ -160,14 +169,16 @@ def process_video(video_file_path: str, output_parent_direcory: str):
 
 def main():
     # Parse the arguments
-    parser = argparse.ArgumentParser(description='Mask out sections of a video so that only one person is visible at a time. Outputs a video file for each person detected in the video.')
+    parser = argparse.ArgumentParser(description='Mask out sections of a video so that only one person is visible at a time. Outputs a video file for each person detected in the video.\n\nSimple usage: python main.py video.mp4 output_directory', formatter_class=argparse.RawTextHelpFormatter )
     parser.add_argument('video', type=str, help='The video or folder of videos to process.')
     parser.add_argument("output", type=str, help="The output directory for the processed video(s). Creates this directory if it doesn't exist.")
-    parser.add_argument("--mask-type", type=str, choices=["box", "split"], default="box", help="The type of mask to use. Default is 'box'. 'box' masks using the bounding boxes of each person, 'split' splits the frame vertically between each person.")
-    parser.add_argument("--blur-size", type=int, default=71, help="The size of the blur kernel to use when blurring the mask (only used when mask_type is 'box'). Larger values will increase the size of the masked area. Increase this if the mask doesn't cover all of the movement/props the person has.")
-    parser.add_argument("--frame-limit", type=int, default=-1, help="The number of frames to process. Useful for testing. If not specified, the entire video will be processed.")
-    parser.add_argument("--show-frame-count", action="store_true", help="Whether or not to display the frame count on the output video(s).")
-    parser.add_argument("--visualise", action="store_true", help="Whether or not to display the annotated frame. Useful for testing.")
+    parser.add_argument("-m", "--mask-type", type=str, choices=["box", "split"], default="box", help="The type of mask to use. Default is 'box'. 'box' masks using the bounding boxes of each person, 'split' splits the frame vertically between each person.")
+    parser.add_argument("-b", "--blur-size", type=int, default=71, help="The size of the blur kernel to use when blurring the mask (only used when mask_type is 'box'). Larger values will increase the size of the masked area. Increase this if the mask doesn't cover all of the movement/props the person has.")
+    parser.add_argument("-l", "--frame-limit", type=int, default=-1, help="The number of frames to process. Useful for testing. If not specified, the entire video will be processed.")
+    parser.add_argument("-s", "--show-frame-count", action="store_true", help="Whether or not to display the frame count on the output video(s).")
+    parser.add_argument("-v", "--visualise", action="store_true", help="Whether or not to display the annotated frame. Useful for testing.")
+    parser.add_argument("-c", "--confidence-threshold", type=float, default=0.1, help="The confidence threshold for the YOLO model. Default is 0.1. Increase this if the model is detecting too many false positives. Decrease this if the model is missing people.")
+    parser.add_argument("-i", "--intersection-threshold", type=float, default=0.8, help="The intersection threshold for the YOLO model. Default is 0.8. Increase this if the model is missing overlapping people.")
 
     args = parser.parse_args()
 
@@ -183,9 +194,21 @@ def main():
     global visualise
     visualise = args.visualise
 
+    if args.confidence_threshold < 0 or args.confidence_threshold > 1:
+        print('Confidence threshold must be between 0 and 1.')
+        exit()
+
+    global confidence_threshold
+    confidence_threshold = args.confidence_threshold
+
+    global intersection_threshold
+    intersection_threshold = args.intersection_threshold
+
     print(f"Mask blur size: {mask_blur_size} pixels")
     print(f"Mask type: {mask_type}")
     print(f"Show frame count: {show_frame_count}")
+    print(f"Confidence threshold: {confidence_threshold}")
+    print(f"Intersection threshold: {intersection_threshold}")
 
     if args.frame_limit != -1:
         print(f'Frame Limit: {args.frame_limit} frames.')
@@ -220,6 +243,5 @@ def main():
     else:
         print('Invalid video file or folder.')
 
-# TODO: slight issue with the tracking model for the Quartet video it doesnt recognise the second person very well. Look at tweaking parameters.
 if __name__ == "__main__":
     main()
