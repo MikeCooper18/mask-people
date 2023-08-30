@@ -1,13 +1,9 @@
 ﻿# Installation
-`git clone https://github.com/MikeCooper18/mask-people.git ./mask_people`
-
-`cd mask_people`
-
-`python -m venv venv`
-
-`venv/Scripts/activate`
-
-`pip install -r requirements.txt`
+- `git clone https://github.com/MikeCooper18/mask-people.git ./mask_people`
+- `cd mask_people`
+- `python -m venv venv`
+- `venv/Scripts/activate`
+- `pip install -r requirements.txt`
 
 
 # Usage
